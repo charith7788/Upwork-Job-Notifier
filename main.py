@@ -4,7 +4,7 @@ import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import Dispatcher, CommandHandler, CallbackContext, JobQueue
+from telegram.ext import Application, CommandHandler, CallbackContext, JobQueue
 import logging
 from flask import Flask, request
 from threading import Thread
@@ -181,7 +181,7 @@ app = Flask(__name__)
 @app.route(f'/{API_KEY}', methods=['POST'])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
+    application.process_update(update)
     return 'ok'
 
 @app.route('/')
@@ -193,7 +193,7 @@ def run_flask():
 
 def signal_handler(signal, frame):
     logger.info("Shutting down gracefully...")
-    job_queue.shutdown()
+    job_queue.stop()
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -201,27 +201,27 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 if __name__ == '__main__':
     bot = Bot(token=API_KEY)
-    dispatcher = Dispatcher(bot, None, use_context=True)
+    application = Application.builder().token(API_KEY).build()
 
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help_command))
-    dispatcher.add_handler(CommandHandler("add", add_search))
-    dispatcher.add_handler(CommandHandler("edit", edit_search))
-    dispatcher.add_handler(CommandHandler("remove", remove_rss))
-    dispatcher.add_handler(CommandHandler("view", view_rss))
-
-    # Set the webhook
-    bot.set_webhook(url=f"https://upwork-job-notifier.onrender.com/{API_KEY}")
-
-    # Create a JobQueue for fetching feeds
-    job_queue = JobQueue()
-    job_queue.set_dispatcher(dispatcher)
-    job_queue.run_repeating(fetch_feeds, interval=300, first=0)
-    job_queue.start()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("add", add_search))
+    application.add_handler(CommandHandler("edit", edit_search))
+    application.add_handler(CommandHandler("remove", remove_rss))
+    application.add_handler(CommandHandler("view", view_rss))
 
     # Set up the Flask server in a separate thread
     server_thread = Thread(target=run_flask)
     server_thread.start()
+
+    # Set the webhook (replace the flask server url with yours)
+    bot.set_webhook(url=f"https://upwork-job-notifier.onrender.com/{API_KEY}") 
+
+    # Create a JobQueue for fetching feeds
+    job_queue = JobQueue()
+    job_queue.set_application(application)
+    job_queue.run_repeating(fetch_feeds, interval=300, first=0)
+    job_queue.start()
 
     # Keep the main thread alive
     while True:
