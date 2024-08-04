@@ -94,7 +94,7 @@ def edit_search(update: Update, context: CallbackContext) -> None:
         return
     try:
         index = int(context.args[0])
-        new_keyword = context.args[1]
+        new_keyword = ' '.join(context.args[1:])
         new_url = BASE_RSS_URL + new_keyword.replace(' ', '%20')
         if user_id in user_feeds and 0 <= index < len(user_feeds[user_id]):
             old_url = user_feeds[user_id][index]
