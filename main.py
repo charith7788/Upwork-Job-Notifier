@@ -4,7 +4,7 @@ import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, CallbackContext
 import logging
 
 # Configure logging
@@ -130,7 +130,7 @@ def view_rss(update: Update, context: CallbackContext) -> None:
     else:
         update.message.reply_text('You have no search keywords.')
 
-def fetch_feeds(context: CallbackContext):
+def fetch_feeds(context: CallbackContext) -> None:
     for user_id, feeds in user_feeds.items():
         if user_id not in last_update_times:
             last_update_times[user_id] = {}
@@ -162,30 +162,28 @@ def fetch_feeds(context: CallbackContext):
                 logger.error(f'Error fetching feed {feed_url}: {e}')
     save_last_update_times()
 
-def save_feeds():
+def save_feeds() -> None:
     with open(FEEDS_FILE, 'w') as f:
         json.dump(user_feeds, f)
 
-def save_last_update_times():
+def save_last_update_times() -> None:
     with open(LAST_UPDATE_FILE, 'w') as f:
         json.dump(last_update_times, f)
 
-def main():
-    updater = Updater(API_KEY, use_context=True)
-    dispatcher = updater.dispatcher
+def main() -> None:
+    application = Application.builder().token(API_KEY).build()
 
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help_command))
-    dispatcher.add_handler(CommandHandler("add", add_search))
-    dispatcher.add_handler(CommandHandler("edit", edit_search))
-    dispatcher.add_handler(CommandHandler("remove", remove_rss))
-    dispatcher.add_handler(CommandHandler("view", view_rss))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("add", add_search))
+    application.add_handler(CommandHandler("edit", edit_search))
+    application.add_handler(CommandHandler("remove", remove_rss))
+    application.add_handler(CommandHandler("view", view_rss))
 
-    job_queue = updater.job_queue
+    job_queue = application.job_queue
     job_queue.run_repeating(fetch_feeds, interval=300, first=0)
 
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
