@@ -3,13 +3,9 @@ import json
 import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import Application, CommandHandler, CallbackContext, JobQueue
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackContext, ApplicationBuilder
 import logging
-from flask import Flask, request
-from threading import Thread
-import signal
-import sys
 
 # Configure logging
 logging.basicConfig(
@@ -93,7 +89,7 @@ def edit_search(update: Update, context: CallbackContext) -> None:
         return
     try:
         index = int(context.args[0])
-        new_keyword = ' '.join(context.args[1:])
+        new_keyword = context.args[1]
         new_url = BASE_RSS_URL + new_keyword.replace(' ', '%20')
         if user_id in user_feeds and 0 <= index < len(user_feeds[user_id]):
             old_url = user_feeds[user_id][index]
@@ -129,7 +125,7 @@ def remove_rss(update: Update, context: CallbackContext) -> None:
 def view_rss(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
     if user_id in user_feeds and user_feeds[user_id]:
-        feeds_list = "\n".join([f"{i}: {url.split('=')[-1].replace('%20', ' ')}" for i, url in enumerate(user_feeds[user_id])])
+        feeds_list = "\n".join([f"{i}: {url}" for i, url in enumerate(user_feeds[user_id])])
         update.message.reply_text(f"Your search keywords:\n{feeds_list}")
     else:
         update.message.reply_text('You have no search keywords.')
@@ -174,32 +170,8 @@ def save_last_update_times():
     with open(LAST_UPDATE_FILE, 'w') as f:
         json.dump(last_update_times, f)
 
-# Flask server setup
-app = Flask(__name__)
-
-@app.route(f'/{API_KEY}', methods=['POST'])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    application.process_update(update)
-    return 'ok'
-
-@app.route('/')
-def index():
-    return 'Upwork Job Notifier Bot is running!'
-
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
-
-def signal_handler(signal, frame):
-    logger.info("Shutting down gracefully...")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-
-if __name__ == '__main__':
-    bot = Bot(token=API_KEY)
-    application = Application.builder().token(API_KEY).build()
+def main():
+    application = ApplicationBuilder().token(API_KEY).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -208,20 +180,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("remove", remove_rss))
     application.add_handler(CommandHandler("view", view_rss))
 
-    # Set up the Flask server in a separate thread
-    server_thread = Thread(target=run_flask)
-    server_thread.start()
+    application.job_queue.run_repeating(fetch_feeds, interval=300, first=0)
 
-    # Set the webhook
-    webhook_url = f'https://upwork-job-notifier.onrender.com/{API_KEY}'
-    try:
-        bot.set_webhook(url=webhook_url)
-    except Exception as e:
-        logger.error(f'Error setting webhook: {e}')
-    
-    # Set up job queue for fetching feeds
-    job_queue = application.job_queue
-    job_queue.run_repeating(fetch_feeds, interval=3600, first=0)
-
-    logger.info('Bot started.')
     application.run_polling()
+
+if __name__ == '__main__':
+    main()
