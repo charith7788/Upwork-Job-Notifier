@@ -4,7 +4,7 @@ import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import Application, CommandHandler, CallbackContext, ApplicationBuilder
+from telegram.ext import Application, CommandHandler, CallbackContext, JobQueue
 import logging
 from flask import Flask, request
 from threading import Thread
@@ -199,7 +199,7 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 if __name__ == '__main__':
     bot = Bot(token=API_KEY)
-    application = ApplicationBuilder().token(API_KEY).build()
+    application = Application.builder().token(API_KEY).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -207,13 +207,21 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("edit", edit_search))
     application.add_handler(CommandHandler("remove", remove_rss))
     application.add_handler(CommandHandler("view", view_rss))
-    
-    # Scheduler to periodically fetch RSS feeds
-    job_queue = application.job_queue
-    job_queue.run_repeating(fetch_feeds, interval=60*60, first=0)  # Adjust the interval as needed
 
-    # Start the Flask server in a separate thread
-    Thread(target=run_flask).start()
+    # Set up the Flask server in a separate thread
+    server_thread = Thread(target=run_flask)
+    server_thread.start()
+
+    # Set the webhook
+    webhook_url = f'https://upwork-job-notifier.onrender.com/{API_KEY}'
+    try:
+        bot.set_webhook(url=webhook_url)
+    except Exception as e:
+        logger.error(f'Error setting webhook: {e}')
     
-    # Start polling
+    # Set up job queue for fetching feeds
+    job_queue = application.job_queue
+    job_queue.run_repeating(fetch_feeds, interval=3600, first=0)
+
+    logger.info('Bot started.')
     application.run_polling()
