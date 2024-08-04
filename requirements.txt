@@ -1,5 +1,6 @@
 soupsieve==2.5
-feedparser
-beautifulsoup4
-python-telegram-bot[job-queue]
-flask
+python-telegram-bot==20.0
+Flask==2.3.2
+feedparser==6.0.8
+beautifulsoup4==4.12.2
+apscheduler==3.10.1
