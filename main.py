@@ -214,15 +214,16 @@ if __name__ == '__main__':
     server_thread = Thread(target=run_flask)
     server_thread.start()
 
-    # Set the webhook (replace the flask server url with yours)
-    bot.set_webhook(url=f"https://upwork-job-notifier.onrender.com/{API_KEY}") 
+    # Set the webhook
+    webhook_url = f'https://upwork-job-notifier.onrender.com/{API_KEY}'
+    try:
+        bot.set_webhook(url=webhook_url)
+    except Exception as e:
+        logger.error(f'Error setting webhook: {e}')
 
-    # Create a JobQueue for fetching feeds
-    job_queue = JobQueue()
-    job_queue.set_application(application)
-    job_queue.run_repeating(fetch_feeds, interval=300, first=0)
-    job_queue.start()
+    # Create a JobQueue to schedule feed updates
+    job_queue = JobQueue(application)
+    job_queue.set_dispatcher(application.dispatcher)
+    job_queue.run_repeating(fetch_feeds, interval=3600, first=0)  # Check feeds every hour
 
-    # Keep the main thread alive
-    while True:
-        time.sleep(1)
+    application.run_polling()
