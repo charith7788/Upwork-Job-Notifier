@@ -6,6 +6,8 @@ from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackContext
 import logging
+from flask import Flask
+from threading import Thread
 
 # Configure logging
 logging.basicConfig(
@@ -19,19 +21,17 @@ BASE_RSS_URL = 'https://www.upwork.com/ab/feed/jobs/rss?paging=NaN-undefined&q='
 FEEDS_FILE = 'user_feeds.json'
 LAST_UPDATE_FILE = 'last_update.json'
 
-def load_json(file_path):
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, 'r') as f:
-                return json.load(f)
-        except json.JSONDecodeError as e:
-            logger.error(f"Error decoding JSON from {file_path}: {e}")
-            return {}
-    else:
-        return {}
+if os.path.exists(FEEDS_FILE):
+    with open(FEEDS_FILE, 'r') as f:
+        user_feeds = json.load(f)
+else:
+    user_feeds = {}
 
-user_feeds = load_json(FEEDS_FILE)
-last_update_times = load_json(LAST_UPDATE_FILE)
+if os.path.exists(LAST_UPDATE_FILE):
+    with open(LAST_UPDATE_FILE, 'r') as f:
+        last_update_times = json.load(f)
+else:
+    last_update_times = {}
 
 def start(update: Update, context: CallbackContext) -> None:
     welcome_text = (
@@ -127,13 +127,10 @@ def remove_rss(update: Update, context: CallbackContext) -> None:
 def view_rss(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
     if user_id in user_feeds and user_feeds[user_id]:
-        # Extract search keywords from the feed URLs
-        keywords = [url.split('q=')[-1].replace('%20', ' ') for url in user_feeds[user_id]]
-        feeds_list = "\n".join([f"{i}: {keyword}" for i, keyword in enumerate(keywords)])
+        feeds_list = "\n".join([f"{i}: {url.split('=')[-1].replace('%20', ' ')}" for i, url in enumerate(user_feeds[user_id])])
         update.message.reply_text(f"Your search keywords:\n{feeds_list}")
     else:
         update.message.reply_text('You have no search keywords.')
-
 
 def fetch_feeds(context: CallbackContext):
     for user_id, feeds in user_feeds.items():
@@ -175,6 +172,16 @@ def save_last_update_times():
     with open(LAST_UPDATE_FILE, 'w') as f:
         json.dump(last_update_times, f)
 
+# Flask server setup
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return 'Upwork Job Notifier Bot is running!'
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
 def main():
     updater = Updater(API_KEY, use_context=True)
     dispatcher = updater.dispatcher
@@ -193,4 +200,7 @@ def main():
     updater.idle()
 
 if __name__ == '__main__':
+    server_thread = Thread(target=run_flask)
+    server_thread.start()
+
     main()
