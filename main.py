@@ -3,10 +3,10 @@ import json
 import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram.ext import Dispatcher, CommandHandler, CallbackContext
 import logging
-from flask import Flask
+from flask import Flask, request
 from threading import Thread
 
 # Configure logging
@@ -175,6 +175,12 @@ def save_last_update_times():
 # Flask server setup
 app = Flask(__name__)
 
+@app.route(f'/{API_KEY}', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return 'ok'
+
 @app.route('/')
 def index():
     return 'Upwork Job Notifier Bot is running!'
@@ -182,9 +188,9 @@ def index():
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
-def main():
-    updater = Updater(API_KEY, use_context=True)
-    dispatcher = updater.dispatcher
+if __name__ == '__main__':
+    bot = Bot(token=API_KEY)
+    dispatcher = Dispatcher(bot, None, use_context=True)
 
     dispatcher.add_handler(CommandHandler("start", start))
     dispatcher.add_handler(CommandHandler("help", help_command))
@@ -193,14 +199,12 @@ def main():
     dispatcher.add_handler(CommandHandler("remove", remove_rss))
     dispatcher.add_handler(CommandHandler("view", view_rss))
 
-    job_queue = updater.job_queue
-    job_queue.run_repeating(fetch_feeds, interval=300, first=0)
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == '__main__':
+    # Set up the Flask server in a separate thread
     server_thread = Thread(target=run_flask)
     server_thread.start()
 
-    main()
+    # Set the webhook
+    bot.set_webhook(url=f"https://upwork-job-notifier.onrender.com/{API_KEY}")
+
+    job_queue = updater.job_queue
+    job_queue.run_repeating(fetch_feeds, interval=300, first=0)
