@@ -204,7 +204,7 @@ if __name__ == '__main__':
     server_thread.start()
 
     # Set the webhook
-    bot.set_webhook(url=f"https://your-domain.com/{API_KEY}")
+    bot.set_webhook(url=f"https://upwork-job-notifier.onrender.com/{API_KEY}")
 
     # Create a JobQueue for fetching feeds
     job_queue = JobQueue()
