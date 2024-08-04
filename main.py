@@ -4,7 +4,7 @@ import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import Dispatcher, CommandHandler, CallbackContext
+from telegram.ext import Dispatcher, CommandHandler, CallbackContext, JobQueue
 import logging
 from flask import Flask, request
 from threading import Thread
@@ -204,7 +204,10 @@ if __name__ == '__main__':
     server_thread.start()
 
     # Set the webhook
-    bot.set_webhook(url=f"https://upwork-job-notifier.onrender.com/{API_KEY}")
+    bot.set_webhook(url=f"https://your-domain.com/{API_KEY}")
 
-    job_queue = updater.job_queue
+    # Create a JobQueue for fetching feeds
+    job_queue = JobQueue()
+    job_queue.set_dispatcher(dispatcher)
     job_queue.run_repeating(fetch_feeds, interval=300, first=0)
+    job_queue.start()
