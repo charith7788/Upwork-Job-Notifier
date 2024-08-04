@@ -125,8 +125,8 @@ def remove_rss(update: Update, context: CallbackContext) -> None:
 def view_rss(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
     if user_id in user_feeds and user_feeds[user_id]:
-        feeds_list = "\n".join([f"{i}: {url}" for i, url in enumerate(user_feeds[user_id])])
-        update.message.reply_text(f"Your search keywords:\n{feeds_list}")
+        keywords_list = "\n".join([f"{i}: {url.split('q=')[-1].replace('%20', ' ')}" for i, url in enumerate(user_feeds[user_id])])
+        update.message.reply_text(f"Your search keywords:\n{keywords_list}")
     else:
         update.message.reply_text('You have no search keywords.')
 
