@@ -4,7 +4,7 @@ import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackContext, ApplicationBuilder
+from telegram.ext import Updater, CommandHandler, CallbackContext
 import logging
 
 # Configure logging
@@ -171,18 +171,21 @@ def save_last_update_times():
         json.dump(last_update_times, f)
 
 def main():
-    application = ApplicationBuilder().token(API_KEY).build()
+    updater = Updater(API_KEY, use_context=True)
+    dispatcher = updater.dispatcher
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("add", add_search))
-    application.add_handler(CommandHandler("edit", edit_search))
-    application.add_handler(CommandHandler("remove", remove_rss))
-    application.add_handler(CommandHandler("view", view_rss))
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("help", help_command))
+    dispatcher.add_handler(CommandHandler("add", add_search))
+    dispatcher.add_handler(CommandHandler("edit", edit_search))
+    dispatcher.add_handler(CommandHandler("remove", remove_rss))
+    dispatcher.add_handler(CommandHandler("view", view_rss))
 
-    application.job_queue.run_repeating(fetch_feeds, interval=300, first=0)
+    job_queue = updater.job_queue
+    job_queue.run_repeating(fetch_feeds, interval=300, first=0)
 
-    application.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
