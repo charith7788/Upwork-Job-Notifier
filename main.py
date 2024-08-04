@@ -8,6 +8,9 @@ from telegram.ext import Dispatcher, CommandHandler, CallbackContext, JobQueue
 import logging
 from flask import Flask, request
 from threading import Thread
+import signal
+import sys
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -188,6 +191,14 @@ def index():
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
+def signal_handler(signal, frame):
+    logger.info("Shutting down gracefully...")
+    job_queue.shutdown()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 if __name__ == '__main__':
     bot = Bot(token=API_KEY)
     dispatcher = Dispatcher(bot, None, use_context=True)
@@ -199,10 +210,6 @@ if __name__ == '__main__':
     dispatcher.add_handler(CommandHandler("remove", remove_rss))
     dispatcher.add_handler(CommandHandler("view", view_rss))
 
-    # Set up the Flask server in a separate thread
-    server_thread = Thread(target=run_flask)
-    server_thread.start()
-
     # Set the webhook
     bot.set_webhook(url=f"https://upwork-job-notifier.onrender.com/{API_KEY}")
 
@@ -211,3 +218,11 @@ if __name__ == '__main__':
     job_queue.set_dispatcher(dispatcher)
     job_queue.run_repeating(fetch_feeds, interval=300, first=0)
     job_queue.start()
+
+    # Set up the Flask server in a separate thread
+    server_thread = Thread(target=run_flask)
+    server_thread.start()
+
+    # Keep the main thread alive
+    while True:
+        time.sleep(1)
