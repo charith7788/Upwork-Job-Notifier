@@ -4,13 +4,12 @@ import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import Application, CommandHandler, CallbackContext, JobQueue, ApplicationBuilder
+from telegram.ext import Application, CommandHandler, CallbackContext, ApplicationBuilder
 import logging
 from flask import Flask, request
 from threading import Thread
 import signal
 import sys
-import asyncio
 
 # Configure logging
 logging.basicConfig(
@@ -135,7 +134,7 @@ def view_rss(update: Update, context: CallbackContext) -> None:
     else:
         update.message.reply_text('You have no search keywords.')
 
-async def fetch_feeds(context: CallbackContext):
+def fetch_feeds(context: CallbackContext):
     for user_id, feeds in user_feeds.items():
         if user_id not in last_update_times:
             last_update_times[user_id] = {}
@@ -161,7 +160,7 @@ async def fetch_feeds(context: CallbackContext):
 
                         button = InlineKeyboardButton(text="View Job", url=link)
                         reply_markup = InlineKeyboardMarkup([[button]])
-                        await context.bot.send_message(chat_id=user_id, text=message, reply_markup=reply_markup, parse_mode="HTML")
+                        context.bot.send_message(chat_id=user_id, text=message, reply_markup=reply_markup, parse_mode="HTML")
                         last_update_times[user_id][feed_url] = updated_time.isoformat()
             except Exception as e:
                 logger.error(f'Error fetching feed {feed_url}: {e}')
@@ -191,7 +190,7 @@ def index():
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
-def signal_handler(signum, frame):
+def signal_handler(signal, frame):
     logger.info("Shutting down gracefully...")
     sys.exit(0)
 
@@ -200,7 +199,7 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 if __name__ == '__main__':
     bot = Bot(token=API_KEY)
-    application = Application.builder().token(API_KEY).build()
+    application = ApplicationBuilder().token(API_KEY).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -208,11 +207,13 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("edit", edit_search))
     application.add_handler(CommandHandler("remove", remove_rss))
     application.add_handler(CommandHandler("view", view_rss))
-
+    
+    # Scheduler to periodically fetch RSS feeds
     job_queue = application.job_queue
-    job_queue.run_repeating(fetch_feeds, interval=300, first=0)
+    job_queue.run_repeating(fetch_feeds, interval=60*60, first=0)  # Adjust the interval as needed
 
-    loop = asyncio.get_event_loop()
-    loop.create_task(application.start_polling())
-    loop.create_task(run_flask())
-    loop.run_forever()
+    # Start the Flask server in a separate thread
+    Thread(target=run_flask).start()
+    
+    # Start polling
+    application.run_polling()
