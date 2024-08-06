@@ -3,10 +3,13 @@ import json
 import feedparser
 from datetime import datetime
 from bs4 import BeautifulSoup
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import Updater, CommandHandler, CallbackContext, Dispatcher
+from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 
+#script works fine without any warning
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
@@ -14,26 +17,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 API_KEY = os.getenv('API_KEY')
+if not API_KEY:
+    raise ValueError("No API_KEY set for the Telegram bot")
+
 BASE_RSS_URL = 'https://www.upwork.com/ab/feed/jobs/rss?paging=NaN-undefined&q='
 
-FEEDS_FILE = 'user_feeds.json'
-LAST_UPDATE_FILE = 'last_update.json'
+FEEDS_FILE = '/user_feeds.json'
+LAST_UPDATE_FILE = '/upwork/last_update.json'
 
-if os.path.exists(FEEDS_FILE):
-    with open(FEEDS_FILE, 'r') as f:
-        user_feeds = json.load(f)
-else:
-    user_feeds = {}
+app = Flask(__name__)
+scheduler = BackgroundScheduler()
+scheduler.start()
 
-if os.path.exists(LAST_UPDATE_FILE):
-    with open(LAST_UPDATE_FILE, 'r') as f:
-        last_update_times = json.load(f)
-else:
-    last_update_times = {}
+def load_json(file_path):
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON from {file_path}: {e}")
+            return {}
+    else:
+        return {}
+
+user_feeds = load_json(FEEDS_FILE)
+last_update_times = load_json(LAST_UPDATE_FILE)
 
 def start(update: Update, context: CallbackContext) -> None:
     welcome_text = (
-        "Welcome to the Upwork RSS feed bot! Here is a summary of the available commands:\n\n"
+        "Welcome to the Upwork Job Alert bot! Here is a summary of the available commands:\n\n"
         "/add <search keyword>\n"
         "Example: /add autocad\n"
         "Adds a new search keyword to your list.\n\n"
@@ -125,12 +137,14 @@ def remove_rss(update: Update, context: CallbackContext) -> None:
 def view_rss(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
     if user_id in user_feeds and user_feeds[user_id]:
-        keywords_list = "\n".join([f"{i}: {url.split('q=')[-1].replace('%20', ' ')}" for i, url in enumerate(user_feeds[user_id])])
-        update.message.reply_text(f"Your search keywords:\n{keywords_list}")
+        # Extract search keywords from the feed URLs
+        keywords = [url.split('q=')[-1].replace('%20', ' ') for url in user_feeds[user_id]]
+        feeds_list = "\n".join([f"{i}: {keyword}" for i, keyword in enumerate(keywords)])
+        update.message.reply_text(f"Your search keywords:\n{feeds_list}")
     else:
         update.message.reply_text('You have no search keywords.')
 
-def fetch_feeds(context: CallbackContext):
+def fetch_feeds():
     for user_id, feeds in user_feeds.items():
         if user_id not in last_update_times:
             last_update_times[user_id] = {}
@@ -156,7 +170,7 @@ def fetch_feeds(context: CallbackContext):
 
                         button = InlineKeyboardButton(text="View Job", url=link)
                         reply_markup = InlineKeyboardMarkup([[button]])
-                        context.bot.send_message(chat_id=user_id, text=message, reply_markup=reply_markup, parse_mode="HTML")
+                        dispatcher.bot.send_message(chat_id=user_id, text=message, reply_markup=reply_markup, parse_mode="HTML")
                         last_update_times[user_id][feed_url] = updated_time.isoformat()
             except Exception as e:
                 logger.error(f'Error fetching feed {feed_url}: {e}')
@@ -170,7 +184,14 @@ def save_last_update_times():
     with open(LAST_UPDATE_FILE, 'w') as f:
         json.dump(last_update_times, f)
 
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), dispatcher.bot)
+    dispatcher.process_update(update)
+    return 'OK'
+
 def main():
+    global dispatcher
     updater = Updater(API_KEY, use_context=True)
     dispatcher = updater.dispatcher
 
@@ -181,11 +202,9 @@ def main():
     dispatcher.add_handler(CommandHandler("remove", remove_rss))
     dispatcher.add_handler(CommandHandler("view", view_rss))
 
-    job_queue = updater.job_queue
-    job_queue.run_repeating(fetch_feeds, interval=300, first=0)
-
+    scheduler.add_job(fetch_feeds, 'interval', minutes=5)
     updater.start_polling()
-    updater.idle()
+    app.run(port=8080)
 
 if __name__ == '__main__':
     main()
